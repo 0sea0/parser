@@ -1,0 +1,8 @@
+program asd
+var integer a,b; float f;
+procedure main();//分号
+//可以变量声明
+begin
+    read a;
+    write b
+end

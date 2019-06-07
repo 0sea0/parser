@@ -3,6 +3,9 @@ package parser;
 import lex.ParseException;
 import lex.Scan;
 import lex.Token;
+import translation.Quaternion;
+import translation.Table;
+import translation.TableItem;
 
 import static lex.Token.*;
 import static parser.KeyWord.*;
@@ -11,29 +14,28 @@ import static parser.Operator.*;
 public class Analyzer {
     private Scan scan;
     private Token lookahead;
-    StringBuilder buff;
+    private int tc = 0;
+    private Table table = Table.getInstance();
+
     public Analyzer(String filename) {
         this.scan = new Scan(filename);
     }
-    private void printError(String msg){
-        System.out.println(msg);
-        if (match(EOF)){
-            System.exit(0);
-        }
+
+    private void printError(String msg, boolean exit) {
+        System.err.println("错误：" + msg + "  在 ( " + lookahead.getRow() + " , " + lookahead.getColumn() + " )");
+//        if (match(EOF)) {
+        if (exit) System.exit(0);
     }
-    private void printBuff(){
-        System.out.println(buff);
-        buff.delete(0,buff.length());
-    }
+
     //开始分析程序，对外的接口
     public void startAnalysis() {
         getNextToken();
         //总体表达式
         program();
         if (lookahead.getType() != EOF) {
-            System.err.println("出错啦：" + lookahead.getStrVal());
+            printError(lookahead.getStrVal(), true);
             System.exit(0);
-        }else{
+        } else {
             System.out.println("分析完毕");
         }
     }
@@ -51,12 +53,12 @@ public class Analyzer {
         if (matchVal(PROGRAM)) {
             getNextToken();
         } else {
-            System.err.println("期待关键词‘program’");
+            printError("缺少关键词‘program’", false);
         }
         if (match(ID)) {
             getNextToken();
         } else {
-            System.err.println("期待一个程序名");
+            printError("程序名称应该是一个标识符", false);
             getNextToken();
         }
     }
@@ -84,45 +86,54 @@ public class Analyzer {
 
     private void varIdList() {
         //VarIdList→ TypeName ID {',' ID} ';'
-        typeName();
+        int type = typeName();
         if (match(ID)) {
+            if (!table.insert(lookahead.getStrVal(), type)) {
+                printError("存在同名标识符：" + lookahead.getStrVal(), false);
+            }
             getNextToken();
         } else {
-            System.err.println("期待变量名");
+            printError("缺少变量名", false);
             //没有变量名，可能是写的别的类型，也可能是写的，或者；忘记了变量名
-            if (!(matchVal(Operator.D)||matchVal(F))){
+            if (!(matchVal(Operator.D) || matchVal(F))) {
                 getNextToken();
             }
         }
         while (matchVal(Operator.D)) {
             getNextToken();
             if (match(ID)) {
+                if (!table.insert(lookahead.getStrVal(), type)) {
+                    printError("存在同名标识符：" + lookahead.getStrVal(), false);
+                }
                 getNextToken();
             } else {
-                System.err.println("期待变量名");
+                printError("缺少变量名", false);
                 //没有变量名，可能是写的别的类型，也可能是写的，或者；忘记了变量名
-                if (!(matchVal(Operator.D)||matchVal(F))){
+                if (!(matchVal(Operator.D) || matchVal(F))) {
                     getNextToken();
                 }
             }
         }
-        if (matchVal(F)){
+        if (matchVal(F)) {
             getNextToken();
-        }else {
-            System.err.println("期待‘；’");
-            //todo 这里认为是忘记分号 所以不获取下一个token
+        } else {
+            printError("缺少‘；’", false);
+            //这里认为是忘记分号 所以不获取下一个token
         }
     }
 
-    private void typeName() {
+    private int typeName() {
         //TypeName→'integer'| 'float'
+        int typeName = -2;
         if (matchVal(INTEGER) || matchVal(FLOAT)) {
+            if (matchVal(INTEGER)) typeName = 1;
+            else typeName = 2;
             getNextToken();
-        } else if (match(ID)){
-            System.err.println("没有该变量类型");
         } else {
-            System.err.println("期待一个变量类型");
+            printError("错误的变量类型", false);//fixme 再考虑
+            getNextToken();
         }
+        return typeName;
     }
 
     /***过程声明***/
@@ -130,7 +141,7 @@ public class Analyzer {
         //ProgramBody→ε| ProcDec {ProcDec}
         if (match(EOF)) {
             //ε
-        }else{
+        } else {
             procDec();
             while (matchVal(PROCEDURE)) {
                 procDec();
@@ -140,45 +151,48 @@ public class Analyzer {
 
     private void procDec() {
         //ProcDec→ 'procedure' ID '(' ParamList ')' ';' VarDecpart ProcBody
-        if (matchVal(PROCEDURE)){
+        if (matchVal(PROCEDURE)) {
             getNextToken();
-        }else{
-            if (match(ID)){//认为拼错了
-                System.err.println("期待‘procedure’而不是"+lookahead.getStrVal());
+        } else {
+            if (match(ID)) {//认为拼错了
+                printError("期待‘procedure’而不是" + lookahead.getStrVal(), false);
                 getNextToken();
-            }else{
-                System.err.println("缺少关键词‘procedure’");
+            } else {
+                printError("缺少关键词‘procedure’", true);
             }
         }
-        if (match(ID)){
+        if (match(ID)) {
+            if (!table.insert(lookahead.getStrVal(), TableItem.FUN)) {
+                printError("存在同名标识符:" + lookahead.getStrVal(), false);
+            }
             getNextToken();
-        }else{
-            System.err.println("期待一个标识符作为函数名");
-            if (!matchVal(Operator.LP)){
+        } else {
+            printError("函数名应该是一个标识符", false);//fixme 再考虑 2
+            if (!matchVal(Operator.LP)) {
                 getNextToken();
             }
         }
-        if (matchVal(Operator.LP)){
+        if (matchVal(Operator.LP)) {
             getNextToken();
-        }else{
-            System.err.println("缺少‘（’");
+        } else {
+            printError("缺少‘(’", false);
             if (!matchVal(INTEGER) && !matchVal(FLOAT)) {
                 getNextToken();
             }
         }
         paramList();
-        if (matchVal(Operator.RP)){
+        if (matchVal(Operator.RP)) {
             getNextToken();
-        }else{
-            System.err.println("缺少‘)’");
+        } else {
+            printError("缺少‘)’", false);
             if (!matchVal(INTEGER) && !matchVal(FLOAT)) {
                 getNextToken();
             }
         }
-        if (matchVal(F)){
+        if (matchVal(F)) {
             getNextToken();
-        }else {
-            System.err.println("缺少‘；’");
+        } else {
+            printError("缺少‘,’", false);
         }
         varDecpart();
         procBody();
@@ -201,17 +215,17 @@ public class Analyzer {
     private void param() {
         //Param→ TypeName ID {',' ID}
         typeName();
-        if (match(ID)){
+        if (match(ID)) {
             getNextToken();
-        }else{
-            System.err.println("缺少一个标识符作为变量");
+        } else {
+            printError("缺少一个标识符作为变量", true);
         }
         while (matchVal(Operator.D)) {
             getNextToken();
-            if (match(ID)){
+            if (match(ID)) {
                 getNextToken();
-            }else{
-                System.err.println("缺少一个标识符作为变量");
+            } else {
+                printError("缺少一个标识符作为变量", true);
             }
         }
     }
@@ -219,27 +233,32 @@ public class Analyzer {
     /***过程体***/
     private void procBody() {
         //ProcBody→ 'begin' StmList 'end'
-        if (matchVal(BEGIN)){
+        if (matchVal(BEGIN)) {
+            table.levelUp();
             getNextToken();
-        }else {
-            if (match(ID)){
-                System.err.println("期望‘begin’而不是"+lookahead.getStrVal());
+        } else {
+            if (match(ID)) {
+                printError("期望‘begin’而不是" + lookahead.getStrVal(), false);
+                table.levelUp();
                 getNextToken();
-            }else{
-                System.err.println("缺少‘begin’");
+            } else {
+                printError("缺少‘begin’", false);
             }
+            table.levelUp();
         }
         stmList();
 
-        if (matchVal(END)){
+        if (matchVal(END)) {
+            table.levelDown();
             getNextToken();
-        }else {
-            if (match(ID)){
-                System.err.println("期望‘end’而不是"+lookahead.getStrVal());
+        } else {
+            if (match(ID)) {
+                printError("期望‘end’而不是" + lookahead.getStrVal(), false);
                 getNextToken();
-            }else{
-                System.err.println("缺少‘end’");
+            } else {
+                printError("缺少‘end’", false);
             }
+            table.levelDown();
         }
     }
 
@@ -248,7 +267,7 @@ public class Analyzer {
         //StmList→ ε | Stm {';' Stm}
         if (matchVal(END) || matchVal(ELSE) || matchVal(FI) || matchVal(ENDWH)) {
             //kong
-        }else{
+        } else {
             stm();
             while (matchVal(F)) {
                 getNextToken();
@@ -275,122 +294,138 @@ public class Analyzer {
         } else if (matchVal(WRITE)) {
             outputStm();
         } else if (match(ID)) {
-            getNextToken();
-            if (matchVal(LP)) {
+            if (table.getType(lookahead.getStrVal()) == TableItem.FUN) {
                 CallStm();
-            } else if (matchVal(MOV)) {
-                assignmentStm();
             } else {
-                System.err.println("缺少'='或‘(’");
-                //todo 在实验3有了符号表可以判断ID是变量名还是函数调用
+                assignmentStm();
             }
         } else {
-            System.err.println("无法识别由"+lookahead.getStrVal()+"构成的语句");
+            printError("无法识别由" + lookahead.getStrVal() + "构成的语句", true);
             System.exit(0);
         }
     }
 
     private void inputStm() {
         //InputStm→'read' ID
-        if (matchVal(READ)){
+        matchVal(READ);
+        getNextToken();
+        if (match(ID)) {
+            if (table.getType(lookahead.getStrVal()) == -1) {
+                printError("未定义变量 " + lookahead.getStrVal(), false);
+            }
+            System.out.println(new Quaternion("read", " ", " ", lookahead.getStrVal()));
             getNextToken();
-        }else{
-            System.err.println("缺少‘read’");
-        }
-        if (match(ID)){
-            getNextToken();
-        }else{
-            System.err.println("缺少一个标识符");
+        } else {
+            printError("缺少一个标识符", true);
         }
     }
 
     private void outputStm() {
+        //todo 四元式的输出 解决!
         //OutputStm→'write' Exp
-        if (matchVal(WRITE)){
-            getNextToken();
-        }else{
-            System.err.println("缺少‘write’");
-        }
-        exp();
+        matchVal(WRITE);
+        getNextToken();
+        String rel = exp();
+        System.out.println(new Quaternion("write", " ", " ", rel));
     }
 
     private void CallStm() {
+        // todo 需要添加四元式 函数调用 解决！
         //CallStm→ ID '(' ActParamList ')'
-        //match(ID); 前面匹配过了
-        if (matchVal(LP)){
+        match(ID);
+        String funcName = lookahead.getStrVal();
+        if (table.getType(funcName) == -1) {
+            printError("未定义函数 " + funcName, false);
+        }
+        getNextToken();
+        if (matchVal(LP)) {
             getNextToken();
-        }else{
-            System.err.println("缺少‘（’");
+        } else {
+            printError("缺少‘(’", false);
         }
         actParamList();
-        if (matchVal(RP)){
+        if (matchVal(RP)) {
             getNextToken();
-        }else {
-            System.err.println("缺少‘）’");
+        } else {
+            printError("缺少‘)’", false);
         }
-
+        System.out.println(new Quaternion("call", " ", " ", funcName));
     }
 
     private void assignmentStm() {
+        // todo 需要添加四元式 赋值语句 解决!
         //AssignmentStm→ ID '=' Exp
-        //match(ID); 前面匹配过了
-        matchVal(MOV);
+        match(ID);
+        String var = lookahead.getStrVal();
+        if (table.getType(var) == -1) {
+            printError("未定义变量 " + var, false);
+        }
         getNextToken();
-        exp();
+        if (matchVal(MOV)) {
+            getNextToken();
+        } else {
+            printError("不是赋值语句", true);
+        }
+        String rel = exp();
+        System.out.println(new Quaternion("=", rel, " ", var));
     }
 
     private void conditionalStm() {
+        // todo 需要添加四元式 条件语句
         //ConditionalStm→'if' ConditionalExp 'then' StmList 'else' StmList 'fi'
         matchVal(IF);//todo
         getNextToken();
         conditionalExp();
-        if (matchVal(THEN)){
+        if (matchVal(THEN)) {
             getNextToken();
-        }else{
-            System.err.println("缺少‘then’");
-            if (match(ID)){
+        } else {
+            printError("缺少‘then’", false);
+            if (match(ID)) {
                 getNextToken();
             }
         }
         stmList();
-        if (matchVal(ELSE)){
+        if (matchVal(ELSE)) {
+            System.out.println(new Quaternion("j", " ", " ", "___"));
             getNextToken();
-        }else{
-            System.err.println("缺少‘else’");
-            if (match(ID)){
+        } else {
+            printError("缺少‘else’", false);
+            if (match(ID)) {
                 getNextToken();
             }
         }
         stmList();
-        if (matchVal(FI)){
+        if (matchVal(FI)) {
             getNextToken();
-        }else{
-            System.err.println("缺少‘fi’");
-            if (match(ID)){
+        } else {
+            printError("缺少‘fi’", false);
+            if (match(ID)) {
                 getNextToken();
             }
         }
     }
 
     private void loopStm() {
+        // todo 需要添加四元式 循环语句 完成！
         //LoopStm→'while' ConditionalExp 'do' StmList 'endwh'
         matchVal(WHILE);
         getNextToken();
         conditionalExp();
-        if (matchVal(DO)){
+        if (matchVal(DO)) {
             getNextToken();
-        }else{
-            System.err.println("缺少‘do’");
-            if (match(ID)){
+        } else {
+            printError("缺少‘do’", false);
+            if (match(ID)) {
                 getNextToken();
             }
         }
         stmList();
-        if (matchVal(ENDWH)){
+        System.out.println(new Quaternion("j", " ", " ", "___"));
+        if (matchVal(ENDWH)) {
             getNextToken();
-        }else{
-            System.err.println("缺少‘endwh’");
-            if (match(ID)){
+        } else {
+            printError("缺少‘endwh’", false);
+            if (match(ID)) {
                 getNextToken();
             }
         }
@@ -403,57 +438,78 @@ public class Analyzer {
             //kong
         } else {
 //            if (match(ID) || match(INTC) || match(DECI) || matchVal(LP)) {
-            exp();
+            String arg = exp();
+            System.out.println(new Quaternion("push"," "," ",arg));
             while (matchVal(D)) {
                 getNextToken();
-                exp();
+                arg = exp();
+                System.out.println(new Quaternion("push"," "," ",arg));
             }
 //            } else
         }
     }
 
-    /***四则表达式***/
-    private void exp() {
+    /*** todo 四则表达式***/
+    private String exp() {
         //Exp→ Term {'+'|'-' Term}
-        term();
+        String returnVal = term();
+        String op;
         while (matchVal(ADD) || matchVal(SUB)) {
+            op = lookahead.getStrVal();
             getNextToken();
-            term();
+            String arg = term();
+            String temp = getNextTemp();
+            System.out.println(new Quaternion(op, returnVal, arg, temp));
+            returnVal = temp;
         }
+        return returnVal;
     }
 
-    private void term() {
+    private String term() {
         //Term→ Factor {'*'|'/' Factor}
-        factor();
+        String returnVal = factor();
+        String op;
         while (matchVal(MUL) || matchVal(DIV)) {
+            op = lookahead.getStrVal();
             getNextToken();
-            factor();
+            String arg2 = factor();
+            String temp = getNextTemp();
+            System.out.println(new Quaternion(op, returnVal, arg2, temp));
+            returnVal = temp;
         }
+        return returnVal;
     }
 
-    private void factor() {
+    private String factor() {
         //Factor→ ID | INTC | DECI | '(' Exp ')'
+        String result = null;
         if (match(ID)) {
+            if (table.getType(lookahead.getStrVal()) == -1) {
+                printError("未定义变量 " + lookahead.getStrVal(), false);
+            }
+            result = lookahead.getStrVal();
             getNextToken();
-
         } else if (match(INTC)) {
+            result = lookahead.getStrVal();
             getNextToken();
 
         } else if (match(DECI)) {
+            result = lookahead.getStrVal();
             getNextToken();
 
         } else if (matchVal(LP)) {
             getNextToken();
-            exp();
-            if (matchVal(RP)){
+            result = exp();
+            if (matchVal(RP)) {
                 getNextToken();
-            }else{
-                System.err.println("缺少‘）’");
+            } else {
+                printError("缺少‘)’", false);
             }
-        }
+        }//else
+        return result;
     }
 
-    /***条件表达式***/
+    /*** todo 条件表达式***/
     private void conditionalExp() {
         //ConditionalExp→RelationExp {'or' RelationExp}
         relationExp();
@@ -474,18 +530,24 @@ public class Analyzer {
 
     private void compExp() {
         //CompExp→ Exp CmpOp Exp
-        exp();
-        cmpOp();
-        exp();
+        String exp1 = exp();
+        String op = cmpOp();
+        String exp2 = exp();
+        System.out.println(new Quaternion("j" + op, exp1, exp2, "____"));
+        System.out.println(new Quaternion("j", " ", " ", "____"));
     }
 
-    private void cmpOp() {
+    private String cmpOp() {
         //CmpOp→'<' | '<=' | '>' | '>=| '==' | '<>'
-        if (matchVal(LT) || matchVal(LE) || matchVal(GT) || matchVal(GE) || matchVal(EQ) || matchVal(NE)) {
+        String op = null;
+//        if (matchVal(LT) || matchVal(LE) || matchVal(GT) || matchVal(GE) || matchVal(EQ) || matchVal(NE))
+        if (match(OP)) {
+            op = lookahead.getStrVal();
             getNextToken();
         } else {
-            System.err.println("缺少运算符");
+            printError("缺少运算符", true);
         }
+        return op;
     }
 
     //比较lookahead的类型
@@ -495,7 +557,7 @@ public class Analyzer {
 
     //比较lookahead的内容
     private boolean matchVal(String val) {
-        if (lookahead.getType()==KEY) return val.equals(lookahead.getStrVal().toLowerCase());
+        if (lookahead.getType() == KEY) return val.equals(lookahead.getStrVal().toLowerCase());
         return val.equals(lookahead.getStrVal());
     }
 
@@ -504,10 +566,14 @@ public class Analyzer {
         try {
             do {
                 lookahead = scan.getNextToken();
-            }while(lookahead.getType()==NOTE);
+            } while (lookahead.getType() == NOTE);
         } catch (ParseException e) {
-            e.printStackTrace();
+            e.printException();
             lookahead = e.getToken();
         }
+    }
+
+    private String getNextTemp() {
+        return "t" + tc++;
     }
 }

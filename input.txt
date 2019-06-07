@@ -1,8 +1,22 @@
 program asd
-var integer a,b; float f;
+var integer a,b,x,y,c,d,n,m; float f;
+procedure add(integer a,b);
+begin
+    c = a + b
+end
 procedure main();//分号
-//可以变量声明
 begin
     read a;
-    write b
+    write b;
+    add(a,b);
+    a = 3+a*(12-3)/2;
+    while x+y>c*d and n<m
+    do
+    if a>>b or c<d
+    then
+    c = c+d
+    else
+    a=a+b*c
+    fi
+    endwh
 end

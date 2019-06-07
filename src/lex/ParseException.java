@@ -9,7 +9,7 @@ public class ParseException extends Exception {
     }
 
     public void printException() {
-        System.err.println("ERROR: " + getMessage() + ":" + token.getStrVal() + "   第" + token.getRow() + "行,第" + token.getColumn() + "列");
+        System.err.println("错误: " + getMessage() + ":" + token.getStrVal() + "   在 ( " + token.getRow() + " , " + token.getColumn() + " )");
     }
 
     public Token getToken() {

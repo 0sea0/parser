@@ -1,5 +1,8 @@
 package translation;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class TableItem {
     /**
      * 函数名 0
@@ -7,18 +10,32 @@ public class TableItem {
      * 小数变量 2
      * 变量类型打错 -2
      */
-    public static final int FUN = 0;
-    public static final int INT = 1;
-    public static final int DEC = 2;
-    public static final int ERR = 2;
+    public static final int FUN = 2;
+    public static final int INT = 0;
+    public static final int DEC = 1;
+    public static final int ERR = -2;
     private String name;
     private int type;
     private boolean used;
+    private List<Integer> args;
 
     public TableItem(String name, int type) {
         this.name = name;
         this.type = type;
         this.used = false;
+    }
+
+    public TableItem(String name, int type, List<Integer> args) {
+        this(name, type);
+        this.args = args;
+    }
+
+    public List<Integer> getArgs() {
+        return args;
+    }
+
+    public void setArgs(List<Integer> args) {
+        this.args = args;
     }
 
     public String getName() {

@@ -1,15 +1,16 @@
 program asd
 var integer a,b,x,y,c,d,n,m; float f;
-procedure add(integer a,b);
+procedure add(integer qw,er);
 begin
-    c = a + b
+    c = qw + b
 end
 procedure main();//分号
+var integer asd;
 begin
     read a;
     write b;
-    add(a,b);
-    a = 3+a*(12-3)/2;
+    add(a,1.0);
+    a = 3+a*(12-3.0)/2;
     while x+y>c*d and n<m
     do
     if a>>b or c<d

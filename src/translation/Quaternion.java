@@ -6,6 +6,7 @@ package translation;
 public class Quaternion {
 
     private static int count = -1;
+    private int num;
     private String op;
     private String arg1;
     private String arg2;
@@ -13,6 +14,7 @@ public class Quaternion {
 
     public Quaternion() {
         count++;
+        num = count;
     }
 
     public Quaternion(String op, String arg1, String arg2, String result) {
@@ -23,8 +25,28 @@ public class Quaternion {
         this.result = result;
     }
 
+    public String getOp() {
+        return op;
+    }
+
+    public int getNum() {
+        return num;
+    }
+
+    public static int getCount() {
+        return count;
+    }
+
+    public String getResult() {
+        return result;
+    }
+
+    public void setResult(String result) {
+        this.result = result;
+    }
+
     @Override
     public String toString() {
-        return count + "  ( " + op + " , " + arg1 + " , " + arg2 + " , " + result + " )";
+        return num + "  ( " + op + " , " + arg1 + " , " + arg2 + " , " + result + " )";
     }
 }

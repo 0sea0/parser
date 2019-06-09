@@ -1,15 +1,12 @@
 package parser;
 
-import javafx.scene.control.Tab;
 import lex.ParseException;
 import lex.Scan;
 import lex.Token;
-import translation.Quaternion;
-import translation.Table;
-import translation.TableItem;
-import translation.Value;
+import translation.*;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
 import static lex.Token.*;
@@ -22,6 +19,7 @@ public class Analyzer {
     private int tc = 0;
     private Table table = Table.getInstance();
     List<Integer> args = null;
+    List<Quaternion> qList = new ArrayList<>();
     public Analyzer(String filename) {
         this.scan = new Scan(filename);
     }
@@ -265,8 +263,10 @@ public class Analyzer {
                 printError("缺少‘begin’", false);
             }
         }
-        stmList();
-
+        Info info = stmList();
+        for (Quaternion q :info.getQList()){
+            System.out.println(q);
+        }
         if (matchVal(END)) {
             table.levelDown();
             getNextToken();
@@ -282,15 +282,17 @@ public class Analyzer {
     }
 
     /***语句***/
-    private void stmList() {
+    private Info stmList() {
         //StmList→ ε | Stm {';' Stm}
+        Info info = null;
         if (matchVal(END) || matchVal(ELSE) || matchVal(FI) || matchVal(ENDWH)) {
             //kong
         } else {
-            stm();
+            info = stm();
             while (matchVal(F)) {
                 getNextToken();
-                stm();
+                Info info2 = stm();
+                info.getQList().addAll(info2.getQList());
             }
         }
 //        if (matchVal(IF) || matchVal(WHILE) || matchVal(READ)
@@ -299,58 +301,69 @@ public class Analyzer {
 //        } else  else {
 //            //出错
 //        }
+        return info;
     }
 
     /***语句***/
-    private void stm() {
+    private Info stm() {
         //Stm→ConditionalStm | LoopStm | InputStm | OutputStm | CallStm | AssignmentStm
+        Info info = null;
         if (matchVal(IF)) {
-            conditionalStm();
+            info = conditionalStm();
         } else if (matchVal(WHILE)) {
-            loopStm();
+            info = loopStm();
         } else if (matchVal(READ)) {
-            inputStm();
+            info = inputStm();
         } else if (matchVal(WRITE)) {
-            outputStm();
+            info = outputStm();
         } else if (match(ID)) {
             if (table.getType(lookahead.getStrVal()) == TableItem.FUN) {
-                CallStm();
+                info = CallStm();
             } else {
-                assignmentStm();
+                info = assignmentStm();
             }
         } else {
             printError("无法识别由" + lookahead.getStrVal() + "构成的语句", true);
             System.exit(0);
         }
+        return info;
     }
 
-    private void inputStm() {
+    private Info inputStm() {
         //InputStm→'read' ID
+        Info info = new Info();
         matchVal(READ);
         getNextToken();
         if (match(ID)) {
             if (table.getType(lookahead.getStrVal()) == -1) {
                 printError("未定义变量 " + lookahead.getStrVal(), false);
             }
-            System.out.println(new Quaternion("read", " ", " ", lookahead.getStrVal()));
+            info.getQList().add(new Quaternion("read", " ", " ", lookahead.getStrVal()));
             getNextToken();
         } else {
             printError("缺少一个标识符", true);
         }
+        return info;
     }
 
-    private void outputStm() {
+    private Info outputStm() {
         //todo 四元式的输出 解决!
         //OutputStm→'write' Exp
+        Info info = new Info();
         matchVal(WRITE);
         getNextToken();
         Value rel = exp();
-        System.out.println(new Quaternion("write", " ", " ", rel.getVal()));
+        for (Quaternion q : rel.getqList()){
+            System.out.println(q);
+        }
+        info.getQList().add(new Quaternion("write", " ", " ", rel.getVal()));
+        return info;
     }
 
-    private void CallStm() {
+    private Info CallStm() {
         // todo 需要添加四元式 函数调用 解决！
         //CallStm→ ID '(' ActParamList ')'
+        Info info = new Info();
         match(ID);
         String funcName = lookahead.getStrVal();
         if (table.getType(funcName) == -1) {
@@ -371,12 +384,14 @@ public class Analyzer {
         } else {
             printError("缺少‘)’", false);
         }
-        System.out.println(new Quaternion("call", " ", " ", funcName));
+        info.getQList().add(new Quaternion("call", " ", " ", funcName));
+        return info;
     }
 
-    private void assignmentStm() {
+    private Info assignmentStm() {
         // todo 需要添加四元式 赋值语句 解决!
         //AssignmentStm→ ID '=' Exp
+        Info info = new Info();
         match(ID);
         String var = lookahead.getStrVal();
         int type;
@@ -390,18 +405,20 @@ public class Analyzer {
             printError("不是赋值语句", true);
         }
         Value rel = exp();
-        System.out.println(new Quaternion("=", rel.getVal(), " ", var));
+        info.getQList().addAll(rel.getqList());
+        info.getQList().add(new Quaternion("=", rel.getVal(), " ", var));
         if (type<rel.getType()){
             System.err.println("警告: float赋值给integer会造成精度丢失");
         }
+        return info;
     }
 
-    private void conditionalStm() {
+    private Info conditionalStm() {
         // todo 需要添加四元式 条件语句 完成！
         //ConditionalStm→'if' ConditionalExp 'then' StmList 'else' StmList 'fi'
         matchVal(IF);//todo
         getNextToken();
-        conditionalExp();
+        Info info1 = conditionalExp();
         if (matchVal(THEN)) {
             getNextToken();
         } else {
@@ -410,9 +427,9 @@ public class Analyzer {
                 getNextToken();
             }
         }
-        stmList();
+        Info info2 = stmList();
+        info1.getQList().addAll(info2.getQList());
         if (matchVal(ELSE)) {
-            System.out.println(new Quaternion("j", " ", " ", "___"));
             getNextToken();
         } else {
             printError("缺少‘else’", false);
@@ -420,7 +437,14 @@ public class Analyzer {
                 getNextToken();
             }
         }
-        stmList();
+        Quaternion q = new Quaternion("j", " ", " ",null);
+        info2 = stmList();
+        while (info1.getFirstFalseJmp()!=null){
+            info1.getFirstFalseJmp().setResult(info2.getQList().get(0).getNum()+"");
+        }
+        q.setResult(info2.getQList().get(info2.getQList().size()-1).getNum()+1+"");
+        info1.getQList().add(q);
+        info1.getQList().addAll(info2.getQList());
         if (matchVal(FI)) {
             getNextToken();
         } else {
@@ -429,14 +453,17 @@ public class Analyzer {
                 getNextToken();
             }
         }
+        return info1;
     }
 
-    private void loopStm() {
+    private Info loopStm() {
         // todo 需要添加四元式 循环语句 完成！
         //LoopStm→'while' ConditionalExp 'do' StmList 'endwh'
+        Info info = new Info();
+        info.setBegin(Quaternion.getCount()+1);
         matchVal(WHILE);
         getNextToken();
-        conditionalExp();
+        Info info1 = conditionalExp();
         if (matchVal(DO)) {
             getNextToken();
         } else {
@@ -445,8 +472,16 @@ public class Analyzer {
                 getNextToken();
             }
         }
-        stmList();
-        System.out.println(new Quaternion("j", " ", " ", "___"));
+        Info info2 = stmList();
+        info1.getQList().addAll(info2.getQList());
+        info1.getQList().add(new Quaternion("j", " ", " ", String.valueOf(info.getBegin())));
+//        info.setEnd(Quaternion.getCount());
+        while(info1.getFirstFalseJmp()!=null) {
+            info1.getFirstFalseJmp().setResult(Quaternion.getCount() + 1 + "");
+        }
+//        for (Quaternion q : info1.getQList()){
+//            System.out.println(q);
+//        }
         if (matchVal(ENDWH)) {
             getNextToken();
         } else {
@@ -455,29 +490,37 @@ public class Analyzer {
                 getNextToken();
             }
         }
+        return info1;
     }
 
     /***实参声明***/
-    private void actParamList() {
+    private Info actParamList() {
         //ActParamList→ ε | Exp {',' Exp}
+        Info info = new Info();
         if (matchVal(RP)) {
             //kong
         } else {
 //            if (match(ID) || match(INTC) || match(DECI) || matchVal(LP)) {
             int i = 0,k = args.size();
             Value arg = exp();
+            for (Quaternion q : arg.getqList()){
+                System.out.println(q);
+            }
             if (arg.getType() != args.get(i++)){
                 System.err.println("警告: 参数类型不匹配");
             }
-            System.out.println(new Quaternion("push"," "," ",arg.getVal()));
+            info.getQList().add(new Quaternion("push"," "," ",arg.getVal()));
             try {
                 while (matchVal(D)) {
                     getNextToken();
                     arg = exp();
+                    for (Quaternion q : arg.getqList()){
+                        System.out.println(q);
+                    }
                     if (arg.getType() != args.get(i++)) {
                         System.err.println("警告: 参数类型不匹配");
                     }
-                    System.out.println(new Quaternion("push", " ", " ", arg.getVal()));
+                    info.getQList().add(new Quaternion("push", " ", " ", arg.getVal()));
                 }
             }catch (IndexOutOfBoundsException e){
                 printError("函数参数数量错误",true);
@@ -487,6 +530,7 @@ public class Analyzer {
             }
 //            } else
         }
+        return info;
     }
 
     /*** todo 四则表达式***/
@@ -499,7 +543,9 @@ public class Analyzer {
             getNextToken();
             Value arg = term();
             String temp = getNextTemp();
-            System.out.println(new Quaternion(op, returnVal.getVal(), arg.getVal(), temp));
+            returnVal.getqList().addAll(arg.getqList());
+            returnVal.getqList().add(new Quaternion(op, returnVal.getVal(), arg.getVal(), temp));
+//            System.out.println(new Quaternion(op, returnVal.getVal(), arg.getVal(), temp));
             returnVal.setVal(temp);
             returnVal.setType(returnVal.getType()|arg.getType());
         }
@@ -515,7 +561,9 @@ public class Analyzer {
             getNextToken();
             Value arg2 = factor();
             String temp = getNextTemp();
-            System.out.println(new Quaternion(op, returnVal.getVal(), arg2.getVal(), temp));
+            returnVal.getqList().addAll(arg2.getqList());
+            returnVal.getqList().add(new Quaternion(op, returnVal.getVal(), arg2.getVal(), temp));
+//            System.out.println(new Quaternion(op, returnVal.getVal(), arg2.getVal(), temp));
             returnVal.setVal(temp);
             returnVal.setType(returnVal.getType()|arg2.getType());
         }
@@ -553,31 +601,47 @@ public class Analyzer {
     }
 
     /*** todo 条件表达式***/
-    private void conditionalExp() {
+    private Info conditionalExp() {
         //ConditionalExp→RelationExp {'or' RelationExp}
-        relationExp();
+        Info info1 = relationExp();
+//        info1.getFirstTrueJmp().setResult(info.getEnd()+1+"");
         while (matchVal(OR)) {
             getNextToken();
-            relationExp();
+            Info info2 = relationExp();
+            info1.getQList().addAll(info2.getQList());
+            info1.getFirstFalseJmp().setResult(info2.getQList().get(0).getNum()+"");
         }
+        int end = info1.getQList().get(info1.getQList().size()-1).getNum();
+        while(info1.getFirstTrueJmp()!=null) {
+            info1.getFirstTrueJmp().setResult(end+1+"");
+        }
+        return info1;
     }
 
-    private void relationExp() {
+    private Info relationExp() {
         //RelationExp→ CompExp {'and' CompExp}
-        compExp();
+        Info info1= compExp();
+        Info info2;
         while (matchVal(AND)) {
             getNextToken();
-            compExp();
+            info2 = compExp();
+            info1.getQList().addAll(info2.getQList());
+            info1.getFirstTrueJmp().setResult(info2.getQList().get(0).getNum()+"");
         }
+        return info1;
     }
 
-    private void compExp() {
+    private Info compExp() {
         //CompExp→ Exp CmpOp Exp
+        Info info1 = new Info(Quaternion.getCount()+1);
         Value exp1 = exp();
+        info1.getQList().addAll(exp1.getqList());
         String op = cmpOp();
         Value exp2 = exp();
-        System.out.println(new Quaternion("j" + op, exp1.getVal(), exp2.getVal(), "____"));
-        System.out.println(new Quaternion("j", " ", " ", "____"));
+        info1.getQList().addAll(exp2.getqList());
+        info1.getQList().add(new Quaternion("j" + op, exp1.getVal(), exp2.getVal(), null));
+        info1.getQList().add(new Quaternion("j", " ", " ", null));
+        return info1;
     }
 
     private String cmpOp() {

@@ -7,7 +7,7 @@ public class Main {
 /*        Scanner scanner = new Scanner(System.in);
         String filename = scanner.next();*/
         /*便于测试*/
-        String filename = "input.txt";
+        String filename = "input2.txt";
         Analyzer analyzer = new Analyzer(filename);
         analyzer.startAnalysis();
 /*        Scan scan = new Scan(filename);

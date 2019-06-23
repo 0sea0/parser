@@ -16,14 +16,20 @@ import static parser.Operator.*;
 public class Analyzer {
     private Scan scan;
     private Token lookahead;
-    private int tc = 0;
-    private Table table = Table.getInstance();
-    List<Integer> args = null;
-    List<Quaternion> qList = new ArrayList<>();
+    private int tc = 0;//t的下标
+    private Table table = Table.getInstance();//符号表
+    private List<Integer> args = null;//函数的参数类型
+
     public Analyzer(String filename) {
         this.scan = new Scan(filename);
     }
 
+    //打印警告信息
+    private void printWaring(String msg) {
+        System.err.println("警告：" + msg + "  在 ( " + lookahead.getRow() + " , " + lookahead.getColumn() + " )");
+    }
+
+    //打印错误信息
     private void printError(String msg, boolean exit) {
         System.err.println("错误：" + msg + "  在 ( " + lookahead.getRow() + " , " + lookahead.getColumn() + " )");
 //        if (match(EOF)) {
@@ -70,13 +76,15 @@ public class Analyzer {
     /***变量声明***/
     private void varDecpart() {
         //VarDecpart→ ε| 'var' VarDecList
-        if (matchVal(VAR)) {
-            getNextToken();
-            varDecList();
-        } else if (match(EOF) || matchVal(PROCEDURE) || matchVal(BEGIN)) {
+        if (match(EOF) || matchVal(PROCEDURE) || matchVal(BEGIN)) {
             //空的时候求follow 什么也不做
         } else {
-
+            if (matchVal(VAR)) {
+                getNextToken();
+                varDecList();
+            } else {
+                printError("缺少'var'",true);
+            }
         }
     }
 
@@ -228,8 +236,8 @@ public class Analyzer {
         int type = typeName();
         list.add(type);
         if (match(ID)) {
-            if (!table.addArg(lookahead.getStrVal(),type)){
-                printError("错误：存在同名参数'"+lookahead.getStrVal()+"'",true);
+            if (!table.addArg(lookahead.getStrVal(), type)) {
+                printError("错误：存在同名参数'" + lookahead.getStrVal() + "'", true);
             }
             getNextToken();
         } else {
@@ -238,8 +246,8 @@ public class Analyzer {
         while (matchVal(Operator.D)) {
             getNextToken();
             if (match(ID)) {
-                if (!table.addArg(lookahead.getStrVal(),type)){
-                    printError("错误：存在同名参数'"+lookahead.getStrVal()+"'",true);
+                if (!table.addArg(lookahead.getStrVal(), type)) {
+                    printError("错误：存在同名参数'" + lookahead.getStrVal() + "'", true);
                 }
                 getNextToken();
                 list.add(type);
@@ -264,7 +272,7 @@ public class Analyzer {
             }
         }
         Info info = stmList();
-        for (Quaternion q :info.getQList()){
+        for (Quaternion q : info.getQList()) {
             System.out.println(q);
         }
         if (matchVal(END)) {
@@ -295,12 +303,6 @@ public class Analyzer {
                 info.getQList().addAll(info2.getQList());
             }
         }
-//        if (matchVal(IF) || matchVal(WHILE) || matchVal(READ)
-//                || matchVal(WRITE) || match(ID)) {
-//
-//        } else  else {
-//            //出错
-//        }
         return info;
     }
 
@@ -353,9 +355,7 @@ public class Analyzer {
         matchVal(WRITE);
         getNextToken();
         Value rel = exp();
-        for (Quaternion q : rel.getqList()){
-            System.out.println(q);
-        }
+        info.getQList().addAll(rel.getqList());
         info.getQList().add(new Quaternion("write", " ", " ", rel.getVal()));
         return info;
     }
@@ -368,7 +368,7 @@ public class Analyzer {
         String funcName = lookahead.getStrVal();
         if (table.getType(funcName) == -1) {
             printError("未定义函数 " + funcName, false);
-        }else{
+        } else {
             args = table.getArgsType();
         }
         getNextToken();
@@ -378,12 +378,13 @@ public class Analyzer {
             printError("缺少‘(’", false);
         }
 
-        actParamList();
+        Info info1 = actParamList();
         if (matchVal(RP)) {
             getNextToken();
         } else {
             printError("缺少‘)’", false);
         }
+        info.getQList().addAll(info1.getQList());
         info.getQList().add(new Quaternion("call", " ", " ", funcName));
         return info;
     }
@@ -394,21 +395,24 @@ public class Analyzer {
         Info info = new Info();
         match(ID);
         String var = lookahead.getStrVal();
-        int type;
-        if ((type = table.getType(var)) == -1) {
-            printError("未定义变量 " + var, false);
-        }
+        int type = TableItem.ERR;
         getNextToken();
         if (matchVal(MOV)) {
+            if ((type = table.getType(var)) == -1) {
+                printError("未定义变量 " + var, false);
+            }
             getNextToken();
         } else {
-            printError("不是赋值语句", true);
+            if (matchVal(LP)) {
+                printError("未定义函数'" + var + "'", true);
+            }
+            printError("错误的语句", true);
         }
         Value rel = exp();
         info.getQList().addAll(rel.getqList());
         info.getQList().add(new Quaternion("=", rel.getVal(), " ", var));
-        if (type<rel.getType()){
-            System.err.println("警告: float赋值给integer会造成精度丢失");
+        if (rel.getType()==TableItem.DEC && type==TableItem.INT) {
+            printWaring("float赋值给integer会造成精度丢失");
         }
         return info;
     }
@@ -416,7 +420,7 @@ public class Analyzer {
     private Info conditionalStm() {
         // todo 需要添加四元式 条件语句 完成！
         //ConditionalStm→'if' ConditionalExp 'then' StmList 'else' StmList 'fi'
-        matchVal(IF);//todo
+        matchVal(IF);
         getNextToken();
         Info info1 = conditionalExp();
         if (matchVal(THEN)) {
@@ -437,12 +441,12 @@ public class Analyzer {
                 getNextToken();
             }
         }
-        Quaternion q = new Quaternion("j", " ", " ",null);
+        Quaternion q = new Quaternion("j", " ", " ", null);
         info2 = stmList();
-        while (info1.getFirstFalseJmp()!=null){
-            info1.getFirstFalseJmp().setResult(info2.getQList().get(0).getNum()+"");
+        while (info1.getFirstFalseJmp() != null) {
+            info1.getFirstFalseJmp().setResult(info2.getQList().get(0).getNum() + "");
         }
-        q.setResult(info2.getQList().get(info2.getQList().size()-1).getNum()+1+"");
+        q.setResult(info2.getQList().get(info2.getQList().size() - 1).getNum() + 1 + "");
         info1.getQList().add(q);
         info1.getQList().addAll(info2.getQList());
         if (matchVal(FI)) {
@@ -460,7 +464,7 @@ public class Analyzer {
         // todo 需要添加四元式 循环语句 完成！
         //LoopStm→'while' ConditionalExp 'do' StmList 'endwh'
         Info info = new Info();
-        info.setBegin(Quaternion.getCount()+1);
+        info.setBegin(Quaternion.getCount() + 1);
         matchVal(WHILE);
         getNextToken();
         Info info1 = conditionalExp();
@@ -476,12 +480,9 @@ public class Analyzer {
         info1.getQList().addAll(info2.getQList());
         info1.getQList().add(new Quaternion("j", " ", " ", String.valueOf(info.getBegin())));
 //        info.setEnd(Quaternion.getCount());
-        while(info1.getFirstFalseJmp()!=null) {
+        while (info1.getFirstFalseJmp() != null) {
             info1.getFirstFalseJmp().setResult(Quaternion.getCount() + 1 + "");
         }
-//        for (Quaternion q : info1.getQList()){
-//            System.out.println(q);
-//        }
         if (matchVal(ENDWH)) {
             getNextToken();
         } else {
@@ -498,35 +499,35 @@ public class Analyzer {
         //ActParamList→ ε | Exp {',' Exp}
         Info info = new Info();
         if (matchVal(RP)) {
+            if (args.size()!=0){
+                //todo 不写参数时候的错误。。。
+                printError("函数需要参数！",true);
+            }
             //kong
         } else {
 //            if (match(ID) || match(INTC) || match(DECI) || matchVal(LP)) {
-            int i = 0,k = args.size();
+            int i = 0, k = args.size();
             Value arg = exp();
-            for (Quaternion q : arg.getqList()){
-                System.out.println(q);
+            info.getQList().addAll(arg.getqList());
+            if (arg.getType() != args.get(i++)) {
+                printWaring("参数类型不匹配");
             }
-            if (arg.getType() != args.get(i++)){
-                System.err.println("警告: 参数类型不匹配");
-            }
-            info.getQList().add(new Quaternion("push"," "," ",arg.getVal()));
+            info.getQList().add(new Quaternion("push", " ", " ", arg.getVal()));
             try {
                 while (matchVal(D)) {
                     getNextToken();
                     arg = exp();
-                    for (Quaternion q : arg.getqList()){
-                        System.out.println(q);
-                    }
+                    info.getQList().addAll(arg.getqList());
                     if (arg.getType() != args.get(i++)) {
-                        System.err.println("警告: 参数类型不匹配");
+                        printWaring("参数类型不匹配");
                     }
                     info.getQList().add(new Quaternion("push", " ", " ", arg.getVal()));
                 }
-            }catch (IndexOutOfBoundsException e){
-                printError("函数参数数量错误",true);
+            } catch (IndexOutOfBoundsException e) {
+                printError("函数参数数量错误", true);
             }
-            if (i!=k){
-                printError("函数参数数量错误",true);
+            if (i != k) {
+                printError("函数参数数量错误", true);
             }
 //            } else
         }
@@ -545,9 +546,8 @@ public class Analyzer {
             String temp = getNextTemp();
             returnVal.getqList().addAll(arg.getqList());
             returnVal.getqList().add(new Quaternion(op, returnVal.getVal(), arg.getVal(), temp));
-//            System.out.println(new Quaternion(op, returnVal.getVal(), arg.getVal(), temp));
             returnVal.setVal(temp);
-            returnVal.setType(returnVal.getType()|arg.getType());
+            returnVal.setType(returnVal.getType() | arg.getType());
         }
         return returnVal;
     }
@@ -563,9 +563,8 @@ public class Analyzer {
             String temp = getNextTemp();
             returnVal.getqList().addAll(arg2.getqList());
             returnVal.getqList().add(new Quaternion(op, returnVal.getVal(), arg2.getVal(), temp));
-//            System.out.println(new Quaternion(op, returnVal.getVal(), arg2.getVal(), temp));
             returnVal.setVal(temp);
-            returnVal.setType(returnVal.getType()|arg2.getType());
+            returnVal.setType(returnVal.getType() | arg2.getType());
         }
         return returnVal;
     }
@@ -578,14 +577,14 @@ public class Analyzer {
             if ((type = table.getType(lookahead.getStrVal())) == -1) {
                 printError("未定义变量 " + lookahead.getStrVal(), false);
             }
-            result = new Value(lookahead.getStrVal(),type);
+            result = new Value(lookahead.getStrVal(), type);
             getNextToken();
         } else if (match(INTC)) {
-            result = new Value(lookahead.getStrVal(),Value.INT);
+            result = new Value(lookahead.getStrVal(), Value.INT);
             getNextToken();
 
         } else if (match(DECI)) {
-            result = new Value(lookahead.getStrVal(),Value.DEC);
+            result = new Value(lookahead.getStrVal(), Value.DEC);
             getNextToken();
 
         } else if (matchVal(LP)) {
@@ -609,31 +608,31 @@ public class Analyzer {
             getNextToken();
             Info info2 = relationExp();
             info1.getQList().addAll(info2.getQList());
-            info1.getFirstFalseJmp().setResult(info2.getQList().get(0).getNum()+"");
+            info1.getFirstFalseJmp().setResult(info2.getQList().get(0).getNum() + "");
         }
-        int end = info1.getQList().get(info1.getQList().size()-1).getNum();
-        while(info1.getFirstTrueJmp()!=null) {
-            info1.getFirstTrueJmp().setResult(end+1+"");
+        int end = info1.getQList().get(info1.getQList().size() - 1).getNum();
+        while (info1.getFirstTrueJmp() != null) {
+            info1.getFirstTrueJmp().setResult(end + 1 + "");
         }
         return info1;
     }
 
     private Info relationExp() {
         //RelationExp→ CompExp {'and' CompExp}
-        Info info1= compExp();
+        Info info1 = compExp();
         Info info2;
         while (matchVal(AND)) {
             getNextToken();
             info2 = compExp();
             info1.getQList().addAll(info2.getQList());
-            info1.getFirstTrueJmp().setResult(info2.getQList().get(0).getNum()+"");
+            info1.getFirstTrueJmp().setResult(info2.getQList().get(0).getNum() + "");
         }
         return info1;
     }
 
     private Info compExp() {
         //CompExp→ Exp CmpOp Exp
-        Info info1 = new Info(Quaternion.getCount()+1);
+        Info info1 = new Info(Quaternion.getCount() + 1);
         Value exp1 = exp();
         info1.getQList().addAll(exp1.getqList());
         String op = cmpOp();
@@ -676,6 +675,7 @@ public class Analyzer {
             } while (lookahead.getType() == NOTE);
         } catch (ParseException e) {
             e.printException();
+            if (e.getToken().getType()== ERROR) System.exit(0);
             lookahead = e.getToken();
         }
     }

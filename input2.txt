@@ -1,0 +1,16 @@
+program asd
+var integer 123a,b,c,d,x,y,n,m,z;
+procedure main();
+begin
+    read n;
+    write m;
+    if x+y>y*z and c < d
+    then
+        while a>b and c<m
+        do
+        x=x+y*a
+        endwh
+    else
+        x=x-y
+    fi
+end

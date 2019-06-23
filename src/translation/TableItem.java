@@ -1,19 +1,12 @@
 package translation;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class TableItem {
-    /**
-     * 函数名 0
-     * 整型变量 1
-     * 小数变量 2
-     * 变量类型打错 -2
-     */
-    public static final int FUN = 2;
-    public static final int INT = 0;
-    public static final int DEC = 1;
-    public static final int ERR = -2;
+    public static final int FUN = 2;//变量名
+    public static final int INT = 0;//整型变量
+    public static final int DEC = 1;//小数变量
+    public static final int ERR = -2;//变量类型打错
     private String name;
     private int type;
     private boolean used;

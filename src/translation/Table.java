@@ -12,6 +12,7 @@ public class Table {
     private static Table instance = null;
     private List<TableItem> funArgs;
     private List<Integer> funArgsType;
+
     public static Table getInstance() {
         if (instance == null) instance = new Table();
         return instance;
